@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>WOL 远程唤醒</title>
+<style>
+:root{--bg:linear-gradient(135deg,#0f0f23,#1a1a3e);--card:rgba(255,255,255,0.05);--card-border:rgba(255,255,255,0.1);--text:#e8e8e8;--text-muted:#9ca3af;--accent:#4facfe;--success:#00e676;--warning:#ffb300;--danger:#ff5252}
+.light{--bg:linear-gradient(135deg,#f5f7fa,#e4e8ec);--card:rgba(255,255,255,0.8);--card-border:rgba(0,0,0,0.08);--text:#1f2937;--text-muted:#6b7280;--accent:#2563eb;--success:#059669;--warning:#d97706;--danger:#dc2626}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);min-height:100vh;transition:background .3s;color:var(--text)}
+.container{max-width:600px;margin:0 auto;padding:20px}
+h1{text-align:center;margin-bottom:6px;font-weight:600;font-size:1.6rem}
+.subtitle{text-align:center;margin-bottom:24px;font-size:0.9rem;color:var(--text-muted)}
+.theme-toggle{position:fixed;top:20px;right:20px;background:var(--card);border:1px solid var(--card-border);border-radius:50%;width:44px;height:44px;cursor:pointer;color:var(--text);font-size:1.2rem;z-index:100;display:flex;align-items:center;justify-content:center}
+.hidden{display:none!important}
+.status-bar{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.25);border-radius:10px;margin-bottom:20px}
+.status-bar.disconnected{background:rgba(255,179,0,0.1);border-color:rgba(255,179,0,0.25)}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--success);margin-right:10px;box-shadow:0 0 6px var(--success)}
+.status-bar.disconnected .status-dot{background:var(--warning);box-shadow:0 0 6px var(--warning)}
+.status-text{display:flex;align-items:center;font-size:0.9rem;color:var(--success);font-weight:500}
+.status-bar.disconnected .status-text{color:var(--warning)}
+.logout-btn{background:rgba(255,82,82,0.1);border:1px solid rgba(255,82,82,0.2);color:var(--danger);cursor:pointer;font-size:0.85rem;padding:6px 12px;border-radius:6px}
+.logout-btn:hover{background:rgba(255,82,82,0.2)}
+.card{background:var(--card);border:1px solid var(--card-border);border-radius:12px;padding:18px;margin-bottom:16px}
+.action-bar{display:flex;gap:10px;flex-wrap:wrap}
+.action-bar .btn{flex:1;min-width:100px}
+.section-title{color:var(--text-muted);font-size:0.8rem;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;font-weight:500}
+.device-list{list-style:none}
+.device-item{display:flex;justify-content:space-between;align-items:center;padding:14px;background:var(--card);border:1px solid var(--card-border);border-radius:8px;margin-bottom:8px}
+.device-item:last-child{margin-bottom:0}
+.device-info{flex:1;min-width:0}
+.device-name{font-size:1rem;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.device-mac{color:var(--text-muted);font-family:monospace;font-size:0.85rem}
+.device-actions{display:flex;gap:8px;flex-shrink:0}
+.empty-state{text-align:center;color:var(--text-muted);padding:24px;font-size:0.9rem}
+.btn{padding:10px 16px;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;transition:all .2s;font-weight:500}
+.btn:hover{opacity:0.85;transform:translateY(-1px)}
+.btn-primary{background:linear-gradient(135deg,#4facfe,#00f2fe);color:#fff}
+.btn-success{background:var(--success);color:#fff}
+.btn-danger{background:rgba(255,82,82,0.15);color:var(--danger);border:1px solid rgba(255,82,82,0.25)}
+.btn-secondary{background:rgba(128,128,128,0.1);color:var(--text-muted);border:1px solid rgba(128,128,128,0.15)}
+.btn-sm{padding:7px 14px;font-size:0.85rem}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);justify-content:center;align-items:center;z-index:200}
+.modal.show{display:flex}
+.modal-content{background:var(--bg);border:1px solid var(--card-border);border-radius:14px;padding:24px;max-width:380px;width:90%;max-height:80vh;overflow-y:auto}
+.modal-title{margin-bottom:20px;font-weight:500;font-size:1.1rem}
+.modal-actions{display:flex;gap:10px;margin-top:20px}
+.modal-actions .btn{flex:1}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:0.85rem;margin-bottom:6px;color:var(--text-muted)}
+.form-group input{width:100%;padding:12px;border:1px solid var(--card-border);border-radius:8px;background:var(--card);color:var(--text);font-size:1rem}
+.form-group input:focus{outline:none;border-color:var(--accent)}
+.scan-status{padding:14px;background:rgba(79,172,254,0.08);border:1px solid rgba(79,172,254,0.2);border-radius:8px;margin-bottom:14px;text-align:center}
+.scan-status .text{color:var(--accent);font-size:0.9rem}
+.progress-bar{height:5px;background:rgba(128,128,128,0.15);border-radius:3px;margin-top:10px;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,#4facfe,#00f2fe);transition:width .3s;border-radius:3px}
+.scan-result{display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--card);border:1px solid var(--card-border);border-radius:8px;margin-bottom:8px}
+.scan-result:last-child{margin-bottom:0}
+.scan-info{flex:1}
+.scan-ip{font-size:0.95rem;margin-bottom:3px;font-weight:500}
+.scan-mac{color:var(--text-muted);font-family:monospace;font-size:0.85rem}
+.stats-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.stat-item{padding:12px;background:var(--card);border:1px solid var(--card-border);border-radius:8px}
+.stat-label{color:var(--text-muted);font-size:0.75rem;margin-bottom:4px}
+.stat-value{font-size:0.95rem;font-weight:500}
+.stat-value.mono{font-family:monospace;font-size:0.9rem}
+.stat-value .unit{color:var(--text-muted);font-size:0.7rem;font-weight:400;margin-left:3px}
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:8px;z-index:300;opacity:0;transition:opacity .2s;font-size:0.9rem;font-weight:500}
+.toast.show{opacity:1}
+.toast.success{background:var(--success);color:#fff}
+.toast.error{background:var(--danger);color:#fff}
+</style>
+</head>
+<body>
+<button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
+<div id="loginPage" class="container">
+<div style="max-width:320px;margin:60px auto">
+<h2 style="text-align:center;margin-bottom:24px;font-weight:500">WOL 远程唤醒</h2>
+<div class="form-group">
+<label>用户名</label>
+<input type="text" id="username" placeholder="admin" autocomplete="username">
+</div>
+<div class="form-group">
+<label>密码</label>
+<input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+</div>
+<button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="login()">登录</button>
+</div>
+</div>
+<div id="mainPage" class="container hidden">
+<h1>WOL 远程唤醒</h1>
+<p class="subtitle">通过云端控制 ESP32 唤醒局域网设备</p>
+<div class="status-bar" id="statusBar">
+<span class="status-text"><span class="status-dot"></span><span id="statusText">连接中...</span></span>
+<button class="logout-btn" onclick="logout()">退出</button>
+</div>
+<div class="card">
+<div class="action-bar">
+<button class="btn btn-success" onclick="wakeAll()">唤醒全部</button>
+<button class="btn btn-secondary" onclick="wakeBroadcast()" style="background:rgba(255,179,0,0.12);color:var(--warning);border-color:rgba(255,179,0,0.25)">广播唤醒</button>
+<button class="btn btn-secondary" onclick="startScan()">扫描</button>
+<button class="btn btn-primary" onclick="showModal('addModal')">添加</button>
+</div>
+</div>
+<div class="card">
+<div class="section-title">设备列表 <span id="deviceCount" style="font-weight:400;float:right;font-size:0.8rem">0 个</span></div>
+<ul class="device-list" id="deviceList">
+<li class="empty-state">连接中...</li>
+</ul>
+</div>
+<div class="card" id="statusSection" style="display:none">
+<div class="section-title">设备状态 <span id="chipModel" style="font-weight:400;float:right;font-size:0.75rem;color:var(--text-muted)"></span></div>
+<div class="stats-grid">
+<div class="stat-item"><div class="stat-label">运行时间</div><div class="stat-value mono" id="statUptime">--</div></div>
+<div class="stat-item"><div class="stat-label">唤醒次数</div><div class="stat-value" id="statWakeCount">--</div></div>
+<div class="stat-item"><div class="stat-label">WiFi 信号</div><div class="stat-value" id="statRssi">--</div></div>
+<div class="stat-item"><div class="stat-label">芯片温度</div><div class="stat-value" id="statTemp">--</div></div>
+<div class="stat-item"><div class="stat-label">内存剩余</div><div class="stat-value mono" id="statHeap">--</div></div>
+<div class="stat-item"><div class="stat-label">WiFi 网络</div><div class="stat-value" id="statSsid">--</div></div>
+</div>
+</div>
+</div>
+<div class="modal" id="addModal">
+<div class="modal-content">
+<h3 class="modal-title">添加设备</h3>
+<div class="form-group">
+<label>设备名称</label>
+<input type="text" id="addName" placeholder="我的电脑">
+</div>
+<div class="form-group">
+<label>MAC 地址</label>
+<input type="text" id="addMac" placeholder="AA:BB:CC:DD:EE:FF">
+</div>
+<div class="modal-actions">
+<button class="btn btn-secondary" onclick="hideModal('addModal')">取消</button>
+<button class="btn btn-success" onclick="addDevice()">保存</button>
+</div>
+</div>
+</div>
+<div class="modal" id="scanModal">
+<div class="modal-content">
+<h3 class="modal-title">扫描网络</h3>
+<div id="scanStatus" class="scan-status">
+<div class="text" id="scanText">准备扫描...</div>
+<div class="progress-bar"><div class="progress-fill" id="scanProgress" style="width:0%"></div></div>
+</div>
+<ul class="device-list" id="scanResults"></ul>
+<div class="modal-actions">
+<button class="btn btn-secondary" onclick="hideModal('scanModal')">关闭</button>
+</div>
+</div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+let token=localStorage.getItem('token');
+let ws=null;
+let devices=[];
+let connected=false;
+let reqId=0;
+let uptimeBase=0,uptimeStart=0,uptimeTimer=null;
+if(localStorage.getItem('theme')==='light')document.body.classList.add('light');
+function toggleTheme(){document.body.classList.toggle('light');localStorage.setItem('theme',document.body.classList.contains('light')?'light':'dark')}
+function showLogin(){document.getElementById('loginPage').classList.remove('hidden');document.getElementById('mainPage').classList.add('hidden')}
+function showMain(){document.getElementById('loginPage').classList.add('hidden');document.getElementById('mainPage').classList.remove('hidden')}
+function toast(msg,type){const t=document.getElementById('toast');t.textContent=msg;t.className='toast '+type+' show';setTimeout(()=>t.classList.remove('show'),2500)}
+async function login(){const res=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('username').value,password:document.getElementById('password').value})});const data=await res.json();if(data.success){token=data.token;localStorage.setItem('token',token);showMain();connect()}else{toast(data.message||'登录失败','error')}}
+function logout(){localStorage.removeItem('token');token=null;ws&&ws.close();showLogin()}
+function connect(){const proto=location.protocol==='https:'?'wss:':'ws:';ws=new WebSocket(proto+'//'+location.host+'/ws');ws.onopen=()=>ws.send(JSON.stringify({type:'web_client',token}));ws.onclose=()=>{updateStatus(false);setTimeout(connect,3000)};ws.onerror=()=>updateStatus(false);ws.onmessage=e=>handle(JSON.parse(e.data))}
+function handle(msg){const cmd=msg.cmd;if(msg.type==='device_list'||cmd==='devices'){if(msg.type==='device_list'){connected=msg.devices&&msg.devices.length>0;updateStatus(connected);if(connected){send('get_devices');send('get_status')}}else{devices=msg.data||[];renderDevices()}}else if(cmd==='wake_result'){if(msg.success){let m='已发送唤醒指令';if(msg.data?.device==='broadcast'&&msg.data?.count)m='广播唤醒已发送 ('+msg.data.count+' 个包)';else if(msg.data?.device==='all')m='已唤醒所有已保存设备';toast(m,'success')}else{toast(msg.message||'失败','error')}}else if(cmd==='add_result'){if(msg.success){toast('设备已添加','success');hideModal('addModal');send('get_devices')}else{toast(msg.message||'添加失败','error')}}else if(cmd==='delete_result'){if(msg.success){toast('设备已删除','success');send('get_devices')}}else if(cmd==='scan_started'){document.getElementById('scanText').textContent='扫描中...';document.getElementById('scanProgress').style.width='30%'}else if(cmd==='scan_result'){document.getElementById('scanProgress').style.width='100%';setTimeout(()=>{document.getElementById('scanStatus').style.display='none';renderScanResults(msg.data?.devices||[])},300)}else if(msg.type==='error'){toast(msg.message,'error')}else if(cmd==='status'&&msg.success){renderStatus(msg.data)}}
+function updateStatus(ok){const bar=document.getElementById('statusBar'),txt=document.getElementById('statusText');bar.className='status-bar'+(ok?'':' disconnected');txt.textContent=ok?'ESP32 已连接':'ESP32 离线';document.getElementById('statusSection').style.display=ok?'':'none'}
+function send(cmd,extra={}){if(!ws||ws.readyState!==1)return toast('未连接','error');ws.send(JSON.stringify({cmd,request_id:++reqId,...extra}))}
+function renderDevices(){const list=document.getElementById('deviceList');document.getElementById('deviceCount').textContent=devices.length+' 个';if(!connected){list.innerHTML='<li class="empty-state">ESP32 设备离线</li>';return}if(devices.length===0){list.innerHTML='<li class="empty-state">暂无设备</li>';return}list.innerHTML=devices.map((d,i)=>`<li class="device-item"><div class="device-info"><div class="device-name">${d.name}</div><div class="device-mac">${d.mac}</div></div><div class="device-actions"><button class="btn btn-sm btn-success" onclick="wake(${i})">唤醒</button><button class="btn btn-sm btn-danger" onclick="del(${i})">删除</button></div></li>`).join('')}
+function wake(i){send('wake',{index:i})}
+function wakeAll(){send('wake',{all:true})}
+function wakeBroadcast(){if(confirm('确定向整个局域网发送广播唤醒？'))send('wake_broadcast')}
+function del(i){if(confirm('确定删除？'))send('delete_device',{index:i})}
+function formatUptime(s){const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60),sec=s%60;return d+':'+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0')}
+function updateUptimeDisplay(){if(uptimeBase>0){const elapsed=Math.floor((Date.now()-uptimeStart)/1000);const total=uptimeBase+elapsed;document.getElementById('statUptime').innerHTML=formatUptime(total)+'<span class="unit">(天:时:分:秒)</span>'}}
+function renderStatus(d){if(!d)return;uptimeBase=d.uptime||0;uptimeStart=Date.now();if(!uptimeTimer){uptimeTimer=setInterval(updateUptimeDisplay,1000)}updateUptimeDisplay();document.getElementById('statWakeCount').textContent=(d.wake_count||0)+' 次';const rssi=d.wifi_rssi||0,q=rssi>=-50?'极强':rssi>=-65?'良好':rssi>=-75?'一般':'弱';document.getElementById('statRssi').innerHTML=rssi+' dBm<span class="unit">('+q+')</span>';const temp=d.temperature||0,tq=temp<40?'正常':temp<55?'偏高':'过热';document.getElementById('statTemp').innerHTML=temp.toFixed(1)+'°C<span class="unit">('+tq+')</span>';document.getElementById('statHeap').textContent=((d.free_heap||0)/1024).toFixed(1)+' KB';document.getElementById('statSsid').textContent=d.ssid||'--';document.getElementById('chipModel').textContent=d.chip_model||''}
+setInterval(()=>{if(connected&&ws&&ws.readyState===1)send('get_status')},30000);
+function showModal(id){document.getElementById(id).classList.add('show')}
+function hideModal(id){document.getElementById(id).classList.remove('show')}
+function addDevice(){const name=document.getElementById('addName').value.trim(),mac=document.getElementById('addMac').value.trim();if(!name||!mac)return toast('请填写完整','error');send('add_device',{name,mac})}
+function startScan(){showModal('scanModal');document.getElementById('scanStatus').style.display='block';document.getElementById('scanProgress').style.width='0%';document.getElementById('scanText').textContent='准备扫描...';document.getElementById('scanResults').innerHTML='';send('scan');pollScanResults()}
+let scanPollTimer=null;
+function pollScanResults(){if(scanPollTimer)clearInterval(scanPollTimer);scanPollTimer=setInterval(()=>{fetch('/scan/results').then(r=>r.json()).then(d=>{document.getElementById('scanProgress').style.width=d.progress+'%';document.getElementById('scanText').textContent=d.scanning?'扫描中 '+d.progress+'% · 发现 '+d.devices.length+' 个':'扫描完成';if(!d.scanning){clearInterval(scanPollTimer);renderScanResults(d.devices)}else if(d.devices.length>0){renderScanResults(d.devices)}})},500)}
+let scanAllDevices=[],scanCurrentPage=1;const scanPageSize=10;
+function renderScanResults(list){scanAllDevices=list;scanCurrentPage=1;renderScanPage()}
+function renderScanPage(){const el=document.getElementById('scanResults'),total=scanAllDevices.length,totalPages=Math.ceil(total/scanPageSize),start=(scanCurrentPage-1)*scanPageSize,end=Math.min(start+scanPageSize,total),pageDevices=scanAllDevices.slice(start,end);if(!total){el.innerHTML='<li class="empty-state">未发现设备</li>';return}let html=pageDevices.map(d=>`<li class="scan-result"><div class="scan-info"><div class="scan-ip">${d.name||d.ip}</div><div class="scan-mac">${d.mac}${d.name?' ('+d.ip+')':''}</div></div><button class="btn btn-sm btn-primary" onclick="addScanned('${d.mac}','${d.name||d.ip}')">添加</button></li>`).join('');if(totalPages>1){html+=`<li style="display:flex;justify-content:center;align-items:center;gap:10px;padding:12px 0"><button class="btn btn-sm btn-secondary" ${scanCurrentPage<=1?'disabled style="opacity:0.4"':''} onclick="scanPrevPage()">上一页</button><span style="color:var(--text-muted);font-size:0.85rem">${scanCurrentPage}/${totalPages}</span><button class="btn btn-sm btn-secondary" ${scanCurrentPage>=totalPages?'disabled style="opacity:0.4"':''} onclick="scanNextPage()">下一页</button></li>`}el.innerHTML=html}
+function scanPrevPage(){if(scanCurrentPage>1){scanCurrentPage--;renderScanPage()}}
+function scanNextPage(){const totalPages=Math.ceil(scanAllDevices.length/scanPageSize);if(scanCurrentPage<totalPages){scanCurrentPage++;renderScanPage()}}
+function addScanned(mac,name){hideModal('scanModal');document.getElementById('addName').value=name;document.getElementById('addMac').value=mac;showModal('addModal')}
+token?showMain():showLogin();
+if(token)connect();
+</script>
+</body>
+</html>

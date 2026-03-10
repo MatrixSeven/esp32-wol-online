@@ -1,0 +1,44 @@
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+.piolibdeps
+
+# Build output
+*.bin
+*.elf
+*.hex
+*.map
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Dependencies
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Secrets (do not commit)
+secrets.h
+credentials.h
+
+# Server binary
+server/wol-server
+server/server
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
