@@ -1,13 +1,18 @@
 package main
 
 import (
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +27,11 @@ var (
 	jwtSecret   = []byte("W0L-S3cur3-K3y-2024!@Relay#Pr0duct10n")
 	staticToken string
 	users       = map[string]string{"admin": ""}
+
+	// OAuth 配置
+	oauthAppID     = "100003"
+	oauthAppSecret = "7kPq9xZ2vR8mW4tL"
+	oauthUserID    = "1991058972475527168" // 允许的用户ID
 
 	espDevice    *DeviceConn
 	devicesMu    sync.RWMutex
@@ -94,6 +104,7 @@ func main() {
 
 	http.HandleFunc("/", indexHandler)
 	http.HandleFunc("/login", loginHandler)
+	http.HandleFunc("/auth/callback", authCallbackHandler)
 	http.HandleFunc("/ws", wsHandler)
 	http.HandleFunc("/api/devices", authMiddleware(devicesAPIHandler))
 	http.HandleFunc("/scan/results", authMiddleware(scanResultsHandler))
@@ -162,6 +173,105 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(Message{"success": true, "token": tokenString})
+}
+
+func authCallbackHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("userId")
+	oauthToken := r.URL.Query().Get("token")
+	sign := r.URL.Query().Get("sign")
+	signTime := r.URL.Query().Get("time")
+	nextUrl := r.URL.Query().Get("nextUrl")
+
+	log.Printf("[OAuth] 收到回调: userId=%s, token=%s, sign=%s, time=%s, nextUrl=%s",
+		userID, oauthToken, sign, signTime, nextUrl)
+
+	// 检查必要参数
+	if userID == "" || oauthToken == "" || sign == "" || signTime == "" {
+		log.Printf("[OAuth] 缺少必要参数")
+		errorMsg := url.QueryEscape("缺少必要参数")
+		http.Redirect(w, r, fmt.Sprintf("/?auth_error=%s", errorMsg), http.StatusTemporaryRedirect)
+		return
+	}
+
+	// 验证用户ID
+	if userID != oauthUserID {
+		log.Printf("[OAuth] 用户ID不匹配: got=%s, expected=%s", userID, oauthUserID)
+		errorMsg := url.QueryEscape("无权限访问")
+		http.Redirect(w, r, fmt.Sprintf("/?auth_error=%s", errorMsg), http.StatusTemporaryRedirect)
+		return
+	}
+
+	// 验证签名
+	if !verifyOAuthSignature(userID, oauthToken, sign, signTime) {
+		log.Printf("[OAuth] 签名验证失败")
+		errorMsg := url.QueryEscape("签名验证失败或请求已过期")
+		http.Redirect(w, r, fmt.Sprintf("/?auth_error=%s", errorMsg), http.StatusTemporaryRedirect)
+		return
+	}
+
+	// 生成 JWT token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &Claims{
+		Username: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+		},
+	})
+	tokenString, err := token.SignedString(jwtSecret)
+	if err != nil {
+		errorMsg := url.QueryEscape("生成令牌失败")
+		http.Redirect(w, r, fmt.Sprintf("/?auth_error=%s", errorMsg), http.StatusTemporaryRedirect)
+		return
+	}
+
+	// 设置 token cookie 并重定向到前端
+	http.SetCookie(w, &http.Cookie{
+		Name:     "token",
+		Value:    tokenString,
+		Path:     "/",
+		HttpOnly: false, // 允许 JavaScript 读取
+		Secure:   false, // 开发环境设为 false，生产环境应为 true
+		MaxAge:   86400,
+	})
+
+	if nextUrl == "" {
+		nextUrl = "/"
+	}
+	// 通过 URL 参数传递 token，确保前端能获取
+	redirectURL := nextUrl + "?auth_token=" + tokenString
+	log.Printf("[OAuth] 用户登录成功: userId=%s", userID)
+	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+}
+
+// verifyOAuthSignature 验证 OAuth 回调签名
+// 签名算法: sha256(token + userId + appId + secret + time).upper()
+func verifyOAuthSignature(userID, token, sign, signTime string) bool {
+	// 解析时间戳
+	timestamp, err := strconv.ParseInt(signTime, 10, 64)
+	if err != nil {
+		log.Printf("[OAuth] 时间戳解析失败: %v", err)
+		return false
+	}
+
+	// 验证时间 - 必须在 30 秒内
+	now := time.Now().Unix()
+	diff := now - timestamp
+	if diff < -30 || diff > 30 {
+		log.Printf("[OAuth] 时间差超限: diff=%d秒", diff)
+		return false
+	}
+
+	// 计算期望签名: sha256(token + userId + appId + secret + time)
+	data := token + userID + oauthAppID + oauthAppSecret + signTime
+	hash := sha256.Sum256([]byte(data))
+	expectedSign := strings.ToUpper(hex.EncodeToString(hash[:]))
+
+	// 验证签名
+	if sign != expectedSign {
+		log.Printf("[OAuth] 签名不匹配: expected=%s, got=%s", expectedSign, sign)
+		return false
+	}
+
+	return true
 }
 
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {

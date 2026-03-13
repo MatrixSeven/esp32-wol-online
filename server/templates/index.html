@@ -70,6 +70,8 @@ h1{text-align:center;margin-bottom:6px;font-weight:600;font-size:1.6rem}
 .toast.show{opacity:1}
 .toast.success{background:var(--success);color:#fff}
 .toast.error{background:var(--danger);color:#fff}
+.btn-wechat{background:#07c160;color:#fff;border:none}
+.btn-wechat:hover{background:#06ad56;opacity:.9;transform:translateY(-1px)}
 </style>
 </head>
 <body>
@@ -86,6 +88,7 @@ h1{text-align:center;margin-bottom:6px;font-weight:600;font-size:1.6rem}
 <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
 </div>
 <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="login()">登录</button>
+<button class="btn btn-wechat" style="width:100%;margin-top:12px" onclick="wechatLogin()">微信登录</button>
 </div>
 </div>
 <div id="mainPage" class="container hidden">
@@ -167,7 +170,8 @@ function toast(msg,type){const t=document.getElementById('toast');t.textContent=
 async function login(){const res=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('username').value,password:document.getElementById('password').value})});const data=await res.json();if(data.success){token=data.token;localStorage.setItem('token',token);showMain();connect()}else{toast(data.message||'登录失败','error')}}
 function logout(){localStorage.removeItem('token');token=null;ws&&ws.close();showLogin()}
 function connect(){const proto=location.protocol==='https:'?'wss:':'ws:';ws=new WebSocket(proto+'//'+location.host+'/ws');ws.onopen=()=>ws.send(JSON.stringify({type:'web_client',token}));ws.onclose=()=>{updateStatus(false);setTimeout(connect,3000)};ws.onerror=()=>updateStatus(false);ws.onmessage=e=>handle(JSON.parse(e.data))}
-function handle(msg){const cmd=msg.cmd;if(msg.type==='device_list'||cmd==='devices'){if(msg.type==='device_list'){connected=msg.devices&&msg.devices.length>0;updateStatus(connected);if(connected){send('get_devices');send('get_status')}}else{devices=msg.data||[];renderDevices()}}else if(cmd==='wake_result'){if(msg.success){let m='已发送唤醒指令';if(msg.data?.device==='broadcast'&&msg.data?.count)m='广播唤醒已发送 ('+msg.data.count+' 个包)';else if(msg.data?.device==='all')m='已唤醒所有已保存设备';toast(m,'success')}else{toast(msg.message||'失败','error')}}else if(cmd==='add_result'){if(msg.success){toast('设备已添加','success');hideModal('addModal');send('get_devices')}else{toast(msg.message||'添加失败','error')}}else if(cmd==='delete_result'){if(msg.success){toast('设备已删除','success');send('get_devices')}}else if(cmd==='scan_started'){document.getElementById('scanText').textContent='扫描中...';document.getElementById('scanProgress').style.width='30%'}else if(cmd==='scan_result'){document.getElementById('scanProgress').style.width='100%';setTimeout(()=>{document.getElementById('scanStatus').style.display='none';renderScanResults(msg.data?.devices||[])},300)}else if(msg.type==='error'){toast(msg.message,'error')}else if(cmd==='status'&&msg.success){renderStatus(msg.data)}}
+function handleAuthError(msg){if(msg.type==='error'&&(msg.message.includes('认证')||msg.message.includes('授权')||msg.message.includes('token')||msg.message.includes('过期')||msg.message.includes('过期'))){localStorage.removeItem('token');token=null;showLogin();toast('登录已过期，请重新登录','error');return true}return false}
+function handle(msg){if(handleAuthError(msg))return;const cmd=msg.cmd;if(msg.type==='device_list'||cmd==='devices'){if(msg.type==='device_list'){connected=msg.devices&&msg.devices.length>0;updateStatus(connected);if(connected){send('get_devices');send('get_status')}}else{devices=msg.data||[];renderDevices()}}else if(cmd==='wake_result'){if(msg.success){let m='已发送唤醒指令';if(msg.data?.device==='broadcast'&&msg.data?.count)m='广播唤醒已发送 ('+msg.data.count+' 个包)';else if(msg.data?.device==='all')m='已唤醒所有已保存设备';toast(m,'success')}else{toast(msg.message||'失败','error')}}else if(cmd==='add_result'){if(msg.success){toast('设备已添加','success');hideModal('addModal');send('get_devices')}else{toast(msg.message||'添加失败','error')}}else if(cmd==='delete_result'){if(msg.success){toast('设备已删除','success');send('get_devices')}}else if(cmd==='scan_started'){document.getElementById('scanText').textContent='扫描中...';document.getElementById('scanProgress').style.width='30%'}else if(cmd==='scan_result'){document.getElementById('scanProgress').style.width='100%';setTimeout(()=>{document.getElementById('scanStatus').style.display='none';renderScanResults(msg.data?.devices||[])},300)}else if(msg.type==='error'){toast(msg.message,'error')}else if(cmd==='status'&&msg.success){renderStatus(msg.data)}}
 function updateStatus(ok){const bar=document.getElementById('statusBar'),txt=document.getElementById('statusText');bar.className='status-bar'+(ok?'':' disconnected');txt.textContent=ok?'ESP32 已连接':'ESP32 离线';document.getElementById('statusSection').style.display=ok?'':'none'}
 function send(cmd,extra={}){if(!ws||ws.readyState!==1)return toast('未连接','error');ws.send(JSON.stringify({cmd,request_id:++reqId,...extra}))}
 function renderDevices(){const list=document.getElementById('deviceList');document.getElementById('deviceCount').textContent=devices.length+' 个';if(!connected){list.innerHTML='<li class="empty-state">ESP32 设备离线</li>';return}if(devices.length===0){list.innerHTML='<li class="empty-state">暂无设备</li>';return}list.innerHTML=devices.map((d,i)=>`<li class="device-item"><div class="device-info"><div class="device-name">${d.name}</div><div class="device-mac">${d.mac}</div></div><div class="device-actions"><button class="btn btn-sm btn-success" onclick="wake(${i})">唤醒</button><button class="btn btn-sm btn-danger" onclick="del(${i})">删除</button></div></li>`).join('')}
@@ -191,8 +195,14 @@ function renderScanPage(){const el=document.getElementById('scanResults'),total=
 function scanPrevPage(){if(scanCurrentPage>1){scanCurrentPage--;renderScanPage()}}
 function scanNextPage(){const totalPages=Math.ceil(scanAllDevices.length/scanPageSize);if(scanCurrentPage<totalPages){scanCurrentPage++;renderScanPage()}}
 function addScanned(mac,name){hideModal('scanModal');document.getElementById('addName').value=name;document.getElementById('addMac').value=mac;showModal('addModal')}
-token?showMain():showLogin();
-if(token)connect();
+function wechatLogin(){const AUTH_BASE_URL='https://ohcar-go-manger.52python.cn/comm/oauth/authorize';const appId='100003';const channel='x';const nextUrl=window.location.pathname+window.location.search;const callback=window.location.origin+'/auth/callback';const authUrl=`${AUTH_BASE_URL}?channel=${channel}&appId=${appId}&nextUrl=${encodeURIComponent(nextUrl)}&callback=${encodeURIComponent(callback)}`;window.location.href=authUrl}
+function getCookie(name){const value=`; ${document.cookie}`;const parts=value.split(`; ${name}=`);if(parts.length===2)return parts.pop().split(';').shift()}
+function deleteCookie(name){document.cookie=name+'=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;'}
+function handleAuthCallback(){const urlParams=new URLSearchParams(window.location.search);const authError=urlParams.get('auth_error');if(authError){toast('登录失败: '+authError,'error');history.replaceState({},'','/')}const authToken=urlParams.get('auth_token');if(authToken){token=authToken;localStorage.setItem('token',token);history.replaceState({},'','/');return}const cookieToken=getCookie('token');if(cookieToken&&!token){token=cookieToken;localStorage.setItem('token',token);deleteCookie('token')}}
+function isTokenExpired(t){try{const parts=t.split('.');if(parts.length!==3)return true;const payload=JSON.parse(atob(parts[1]));if(payload.exp&&payload.exp*1000<Date.now())return true;return false}catch(e){return true}}
+function checkToken(){if(token&&isTokenExpired(token)){localStorage.removeItem('token');token=null;toast('登录已过期，请重新登录','error');return false}return true}
+handleAuthCallback();
+if(!checkToken()){showLogin()}else{token?showMain():showLogin();if(token)connect()}
 </script>
 </body>
 </html>
