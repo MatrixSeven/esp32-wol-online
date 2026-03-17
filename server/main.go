@@ -18,6 +18,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
+	"github.com/joho/godotenv"
 )
 
 //go:embed templates/index.html
@@ -28,10 +29,10 @@ var (
 	staticToken string
 	users       = map[string]string{"admin": ""}
 
-	// OAuth 配置
-	oauthAppID     = "100003"
-	oauthAppSecret = "7kPq9xZ2vR8mW4tL"
-	oauthUserID    = "1991058972475527168" // 允许的用户ID
+	// OAuth 配置（可通过环境变量/命令行参数配置）
+	oauthAppID     string
+	oauthAppSecret string
+	oauthUserID    string
 
 	espDevice    *DeviceConn
 	devicesMu    sync.RWMutex
@@ -69,16 +70,47 @@ type Claims struct {
 }
 
 func main() {
+	// 加载 .env 文件（如果存在）
+	if err := godotenv.Load(); err != nil {
+		log.Println("[配置] 未找到 .env 文件，使用环境变量和默认值")
+	}
+
 	// 命令行参数
-	port := flag.Int("port", 8080, "服务器监听端口")
+	port := flag.Int("port", 0, "服务器监听端口")
 	password := flag.String("password", "", "admin 用户密码")
 	token := flag.String("token", "", "WebSocket 固定访问令牌")
+	appID := flag.String("app-id", "", "OAuth 应用 ID")
+	appSecret := flag.String("app-secret", "", "OAuth 应用密钥")
+	userID := flag.String("user-id", "", "OAuth 允许的用户 ID")
 	flag.Parse()
 
-	// 设置固定 token
-	if *token != "" {
-		staticToken = *token
-	} else {
+	// 端口配置
+	listenPort := *port
+	if listenPort == 0 {
+		if envPort := os.Getenv("WOL_PORT"); envPort != "" {
+			if p, err := strconv.Atoi(envPort); err == nil {
+				listenPort = p
+			}
+		}
+	}
+	if listenPort == 0 {
+		listenPort = 8080
+	}
+
+	// 密码配置
+	adminPassword := *password
+	if adminPassword == "" {
+		adminPassword = os.Getenv("WOL_PASSWORD")
+	}
+	if adminPassword == "" {
+		adminPassword = "%&@Wol@Secure2f24!"
+		log.Println("[警告] 使用默认密码，建议通过 -password 参数或 WOL_PASSWORD 环境变量设置")
+	}
+	users["admin"] = adminPassword
+
+	// Token 配置
+	staticToken = *token
+	if staticToken == "" {
 		staticToken = os.Getenv("WOL_TOKEN")
 	}
 	if staticToken == "" {
@@ -86,23 +118,41 @@ func main() {
 		log.Println("[配置] 使用默认固定 Token")
 	}
 
-	// 如果命令行未指定密码，尝试从环境变量获取
-	if *password == "" {
-		*password = os.Getenv("WOL_PASSWORD")
+	// OAuth 配置
+	oauthAppID = *appID
+	if oauthAppID == "" {
+		oauthAppID = os.Getenv("WOL_OAUTH_APP_ID")
+	}
+	if oauthAppID == "" {
+		oauthAppID = "100003"
+		log.Println("[配置] 使用默认 OAuth App ID")
 	}
 
-	// 如果仍未设置密码，使用默认密码
-	if *password == "" {
-		*password = "%&@Wol@Secure2f24!"
-		log.Println("[警告] 使用默认密码，建议通过 -password 参数或 WOL_PASSWORD 环境变量设置")
+	oauthAppSecret = *appSecret
+	if oauthAppSecret == "" {
+		oauthAppSecret = os.Getenv("WOL_OAUTH_APP_SECRET")
+	}
+	if oauthAppSecret == "" {
+		oauthAppSecret = "7kPq9xZ2vR8mW4tL"
+		log.Println("[配置] 使用默认 OAuth App Secret")
 	}
 
-	users["admin"] = *password
+	oauthUserID = *userID
+	if oauthUserID == "" {
+		oauthUserID = os.Getenv("WOL_OAUTH_USER_ID")
+	}
+	if oauthUserID == "" {
+		oauthUserID = "1991058972475527168"
+		log.Println("[配置] 使用默认 OAuth User ID")
+	}
 
 	// 打印配置信息
-	if staticToken != "" {
-		log.Printf("[配置] 固定 Token: %s", staticToken)
-	}
+	log.Println("========================================")
+	log.Printf("[配置] 监听端口: %d", listenPort)
+	log.Printf("[配置] 固定 Token: %s", staticToken)
+	log.Printf("[配置] OAuth App ID: %s", oauthAppID)
+	log.Printf("[配置] OAuth User ID: %s", oauthUserID)
+	log.Println("========================================")
 
 	http.HandleFunc("/", indexHandler)
 	http.HandleFunc("/login", loginHandler)
@@ -114,7 +164,7 @@ func main() {
 	// 启动心跳检测
 	go heartbeatChecker()
 
-	addr := fmt.Sprintf(":%d", *port)
+	addr := fmt.Sprintf(":%d", listenPort)
 	log.Printf("WOL 中继服务器启动 %s", addr)
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
