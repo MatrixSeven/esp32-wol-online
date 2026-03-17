@@ -43,7 +43,18 @@ h1{text-align:center;margin-bottom:6px;font-weight:600;font-size:1.6rem}
 .btn-sm{padding:7px 14px;font-size:0.85rem}
 .modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);justify-content:center;align-items:center;z-index:200}
 .modal.show{display:flex}
-.modal-content{background:var(--bg);border:1px solid var(--card-border);border-radius:14px;padding:24px;max-width:380px;width:90%;max-height:80vh;overflow-y:auto}
+.modal-content{background:var(--bg);border:1px solid var(--card-border);border-radius:14px;padding:24px;max-width:480px;width:90%}
+.scan-modal{max-width:560px}
+.scan-list{margin-bottom:8px}
+.scan-result{padding:10px 12px;margin-bottom:6px}
+.scan-ip{font-size:0.9rem;margin-bottom:2px}
+.scan-mac{font-size:0.8rem}
+.pagination{display:flex;justify-content:center;align-items:center;gap:6px;padding:8px 0;flex-wrap:wrap}
+.pagination .btn{min-width:36px;padding:6px 10px;font-size:0.8rem}
+.pagination .btn.nav-btn{min-width:60px}
+.page-info{color:var(--text-muted);font-size:0.8rem;min-width:70px;text-align:center}
+.page-jump{display:flex;align-items:center;gap:4px;margin-left:8px}
+.page-jump input{width:50px;padding:4px 6px;font-size:0.8rem;border:1px solid var(--card-border);border-radius:4px;background:var(--card);color:var(--text);text-align:center}
 .modal-title{margin-bottom:20px;font-weight:500;font-size:1.1rem}
 .modal-actions{display:flex;gap:10px;margin-top:20px}
 .modal-actions .btn{flex:1}
@@ -142,13 +153,16 @@ h1{text-align:center;margin-bottom:6px;font-weight:600;font-size:1.6rem}
 </div>
 </div>
 <div class="modal" id="scanModal">
-<div class="modal-content">
-<h3 class="modal-title">扫描网络</h3>
+<div class="modal-content scan-modal">
+<h3 class="modal-title">扫描网络 <span id="scanCount" style="font-size:0.8rem;color:var(--text-muted);font-weight:400"></span></h3>
 <div id="scanStatus" class="scan-status">
 <div class="text" id="scanText">准备扫描...</div>
 <div class="progress-bar"><div class="progress-fill" id="scanProgress" style="width:0%"></div></div>
 </div>
+<div class="scan-list">
 <ul class="device-list" id="scanResults"></ul>
+</div>
+<div class="pagination" id="scanPagination"></div>
 <div class="modal-actions">
 <button class="btn btn-secondary" onclick="hideModal('scanModal')">关闭</button>
 </div>
@@ -161,7 +175,7 @@ let ws=null;
 let devices=[];
 let connected=false;
 let reqId=0;
-let uptimeBase=0,uptimeStart=0,uptimeTimer=null;
+let uptimeBase=0,uptimeStart=0,uptimeTimer=null,wakeCountBase=0;
 if(localStorage.getItem('theme')==='light')document.body.classList.add('light');
 function toggleTheme(){document.body.classList.toggle('light');localStorage.setItem('theme',document.body.classList.contains('light')?'light':'dark')}
 function showLogin(){document.getElementById('loginPage').classList.remove('hidden');document.getElementById('mainPage').classList.add('hidden')}
@@ -175,13 +189,14 @@ function handle(msg){if(handleAuthError(msg))return;const cmd=msg.cmd;if(msg.typ
 function updateStatus(ok){const bar=document.getElementById('statusBar'),txt=document.getElementById('statusText');bar.className='status-bar'+(ok?'':' disconnected');txt.textContent=ok?'ESP32 已连接':'ESP32 离线';document.getElementById('statusSection').style.display=ok?'':'none'}
 function send(cmd,extra={}){if(!ws||ws.readyState!==1)return toast('未连接','error');ws.send(JSON.stringify({cmd,request_id:++reqId,...extra}))}
 function renderDevices(){const list=document.getElementById('deviceList');document.getElementById('deviceCount').textContent=devices.length+' 个';if(!connected){list.innerHTML='<li class="empty-state">ESP32 设备离线</li>';return}if(devices.length===0){list.innerHTML='<li class="empty-state">暂无设备</li>';return}list.innerHTML=devices.map((d,i)=>`<li class="device-item"><div class="device-info"><div class="device-name">${d.name}</div><div class="device-mac">${d.mac}</div></div><div class="device-actions"><button class="btn btn-sm btn-success" onclick="wake(${i})">唤醒</button><button class="btn btn-sm btn-danger" onclick="del(${i})">删除</button></div></li>`).join('')}
-function wake(i){send('wake',{index:i})}
-function wakeAll(){send('wake',{all:true})}
-function wakeBroadcast(){if(confirm('确定向整个局域网发送广播唤醒？'))send('wake_broadcast')}
+function wake(i){send('wake',{index:i});incrementWakeCount()}
+function wakeAll(){send('wake',{all:true});incrementWakeCount()}
+function wakeBroadcast(){if(confirm('确定向整个局域网发送广播唤醒？')){send('wake_broadcast');incrementWakeCount()}}
+function incrementWakeCount(){wakeCountBase++;document.getElementById('statWakeCount').textContent=wakeCountBase+' 次'}
 function del(i){if(confirm('确定删除？'))send('delete_device',{index:i})}
 function formatUptime(s){const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60),sec=s%60;return d+':'+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0')}
 function updateUptimeDisplay(){if(uptimeBase>0){const elapsed=Math.floor((Date.now()-uptimeStart)/1000);const total=uptimeBase+elapsed;document.getElementById('statUptime').innerHTML=formatUptime(total)+'<span class="unit">(天:时:分:秒)</span>'}}
-function renderStatus(d){if(!d)return;uptimeBase=d.uptime||0;uptimeStart=Date.now();if(!uptimeTimer){uptimeTimer=setInterval(updateUptimeDisplay,1000)}updateUptimeDisplay();document.getElementById('statWakeCount').textContent=(d.wake_count||0)+' 次';const rssi=d.wifi_rssi||0,q=rssi>=-50?'极强':rssi>=-65?'良好':rssi>=-75?'一般':'弱';document.getElementById('statRssi').innerHTML=rssi+' dBm<span class="unit">('+q+')</span>';const temp=d.temperature||0,tq=temp<40?'正常':temp<55?'偏高':'过热';document.getElementById('statTemp').innerHTML=temp.toFixed(1)+'°C<span class="unit">('+tq+')</span>';document.getElementById('statHeap').textContent=((d.free_heap||0)/1024).toFixed(1)+' KB';document.getElementById('statSsid').textContent=d.ssid||'--';document.getElementById('chipModel').textContent=d.chip_model||''}
+function renderStatus(d){if(!d)return;uptimeBase=d.uptime||0;uptimeStart=Date.now();wakeCountBase=d.wake_count||0;if(!uptimeTimer){uptimeTimer=setInterval(updateUptimeDisplay,1000)}updateUptimeDisplay();document.getElementById('statWakeCount').textContent=wakeCountBase+' 次';const rssi=d.wifi_rssi||0,q=rssi>=-50?'极强':rssi>=-65?'良好':rssi>=-75?'一般':'弱';document.getElementById('statRssi').innerHTML=rssi+' dBm<span class="unit">('+q+')</span>';const temp=d.temperature||0,tq=temp<40?'正常':temp<55?'偏高':'过热';document.getElementById('statTemp').innerHTML=temp.toFixed(1)+'°C<span class="unit">('+tq+')</span>';document.getElementById('statHeap').textContent=((d.free_heap||0)/1024).toFixed(1)+' KB';document.getElementById('statSsid').textContent=d.ssid||'--';document.getElementById('chipModel').textContent=d.chip_model||''}
 setInterval(()=>{if(connected&&ws&&ws.readyState===1)send('get_status')},30000);
 function showModal(id){document.getElementById(id).classList.add('show')}
 function hideModal(id){document.getElementById(id).classList.remove('show')}
@@ -189,9 +204,10 @@ function addDevice(){const name=document.getElementById('addName').value.trim(),
 function startScan(){showModal('scanModal');document.getElementById('scanStatus').style.display='block';document.getElementById('scanProgress').style.width='0%';document.getElementById('scanText').textContent='准备扫描...';document.getElementById('scanResults').innerHTML='';send('scan');pollScanResults()}
 let scanPollTimer=null;
 function pollScanResults(){if(scanPollTimer)clearInterval(scanPollTimer);scanPollTimer=setInterval(()=>{fetch('/scan/results').then(r=>r.json()).then(d=>{document.getElementById('scanProgress').style.width=d.progress+'%';document.getElementById('scanText').textContent=d.scanning?'扫描中 '+d.progress+'% · 发现 '+d.devices.length+' 个':'扫描完成';if(!d.scanning){clearInterval(scanPollTimer);renderScanResults(d.devices)}else if(d.devices.length>0){renderScanResults(d.devices)}})},500)}
-let scanAllDevices=[],scanCurrentPage=1;const scanPageSize=10;
-function renderScanResults(list){scanAllDevices=list;scanCurrentPage=1;renderScanPage()}
-function renderScanPage(){const el=document.getElementById('scanResults'),total=scanAllDevices.length,totalPages=Math.ceil(total/scanPageSize),start=(scanCurrentPage-1)*scanPageSize,end=Math.min(start+scanPageSize,total),pageDevices=scanAllDevices.slice(start,end);if(!total){el.innerHTML='<li class="empty-state">未发现设备</li>';return}let html=pageDevices.map(d=>`<li class="scan-result"><div class="scan-info"><div class="scan-ip">${d.name||d.ip}</div><div class="scan-mac">${d.mac}${d.name?' ('+d.ip+')':''}</div></div><button class="btn btn-sm btn-primary" onclick="addScanned('${d.mac}','${d.name||d.ip}')">添加</button></li>`).join('');if(totalPages>1){html+=`<li style="display:flex;justify-content:center;align-items:center;gap:10px;padding:12px 0"><button class="btn btn-sm btn-secondary" ${scanCurrentPage<=1?'disabled style="opacity:0.4"':''} onclick="scanPrevPage()">上一页</button><span style="color:var(--text-muted);font-size:0.85rem">${scanCurrentPage}/${totalPages}</span><button class="btn btn-sm btn-secondary" ${scanCurrentPage>=totalPages?'disabled style="opacity:0.4"':''} onclick="scanNextPage()">下一页</button></li>`}el.innerHTML=html}
+let scanAllDevices=[],scanCurrentPage=1;const scanPageSize=8;
+function renderScanResults(list){scanAllDevices=list;scanCurrentPage=1;document.getElementById('scanCount').textContent=list.length>0?`(${list.length} 个设备)`:'';renderScanPage()}
+function renderScanPage(){const el=document.getElementById('scanResults'),pagEl=document.getElementById('scanPagination'),total=scanAllDevices.length,totalPages=Math.max(1,Math.ceil(total/scanPageSize)),start=(scanCurrentPage-1)*scanPageSize,end=Math.min(start+scanPageSize,total),pageDevices=scanAllDevices.slice(start,end);if(!total){el.innerHTML='<li class="empty-state">未发现设备</li>';pagEl.innerHTML='';return}el.innerHTML=pageDevices.map(d=>`<li class="scan-result"><div class="scan-info"><div class="scan-ip">${d.name||d.ip}</div><div class="scan-mac">${d.mac}${d.name?' ('+d.ip+')':''}</div></div><button class="btn btn-sm btn-primary" onclick="addScanned('${d.mac}','${d.name||d.ip}')">添加</button></li>`).join('');if(totalPages>1){let pagHtml=`<button class="btn btn-sm btn-secondary nav-btn" ${scanCurrentPage<=1?'disabled':''} onclick="scanPrevPage()">上一页</button>`;const maxBtns=5,half=Math.floor(maxBtns/2);let startPage=Math.max(1,scanCurrentPage-half),endPage=Math.min(totalPages,startPage+maxBtns-1);if(endPage-startPage<maxBtns-1)startPage=Math.max(1,endPage-maxBtns+1);if(startPage>1){pagHtml+=`<button class="btn btn-sm btn-secondary" onclick="scanGoPage(1)">1</button>`;if(startPage>2)pagHtml+=`<span class="page-info">...</span>`}for(let i=startPage;i<=endPage;i++)pagHtml+=`<button class="btn btn-sm ${i===scanCurrentPage?'btn-primary':'btn-secondary'}" ${i===scanCurrentPage?'disabled':''} onclick="scanGoPage(${i})">${i}</button>`;if(endPage<totalPages){if(endPage<totalPages-1)pagHtml+=`<span class="page-info">...</span>`;pagHtml+=`<button class="btn btn-sm btn-secondary" onclick="scanGoPage(${totalPages})">${totalPages}</button>`}pagHtml+=`<button class="btn btn-sm btn-secondary nav-btn" ${scanCurrentPage>=totalPages?'disabled':''} onclick="scanNextPage()">下一页</button>`;pagHtml+=`<div class="page-jump"><input type="number" min="1" max="${totalPages}" value="${scanCurrentPage}" onkeypress="if(event.key==='Enter')scanGoPage(parseInt(this.value))"><button class="btn btn-sm btn-secondary" onclick="scanGoPage(parseInt(this.previousElementSibling.value))">跳转</button></div>`;pagEl.innerHTML=pagHtml}else{pagEl.innerHTML=''}}
+function scanGoPage(p){const totalPages=Math.ceil(scanAllDevices.length/scanPageSize);if(p>=1&&p<=totalPages){scanCurrentPage=p;renderScanPage()}}
 function scanPrevPage(){if(scanCurrentPage>1){scanCurrentPage--;renderScanPage()}}
 function scanNextPage(){const totalPages=Math.ceil(scanAllDevices.length/scanPageSize);if(scanCurrentPage<totalPages){scanCurrentPage++;renderScanPage()}}
 function addScanned(mac,name){hideModal('scanModal');document.getElementById('addName').value=name;document.getElementById('addMac').value=mac;showModal('addModal')}

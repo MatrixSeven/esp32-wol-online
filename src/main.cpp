@@ -509,62 +509,6 @@ bool getMacFromARP(IPAddress ip, uint8_t *mac) {
   return false;
 }
 
-// 查询 NetBIOS 名称
-String queryNetBIOSName(IPAddress ip) {
-  WiFiUDP nbUDP;
-
-  // NetBIOS 名称查询包
-  uint8_t query[] = {
-    0x00, 0x00,  // Transaction ID
-    0x00, 0x01,  // Flags: Standard query
-    0x00, 0x01,  // Questions: 1
-    0x00, 0x00,  // Answer RRs: 0
-    0x00, 0x00,  // Authority RRs: 0
-    0x00, 0x00,  // Additional RRs: 0
-    // Query: *<00> (wildcard)
-    0x20,  // Length: 32 bytes (encoded name)
-    0x43, 0x4B, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41,
-    0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41,
-    0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41,
-    0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41,
-    0x00,  // Name terminator
-    0x00, 0x21,  // Type: NBSTAT (Node Status)
-    0x00, 0x01   // Class: IN
-  };
-
-  if (!nbUDP.beginPacket(ip, 137)) return "";
-  nbUDP.write(query, sizeof(query));
-  if (!nbUDP.endPacket()) return "";
-
-  // 等待响应
-  delay(100);
-
-  int len = nbUDP.parsePacket();
-  if (len <= 0) return "";
-
-  uint8_t response[576];
-  int rlen = nbUDP.read(response, sizeof(response));
-  nbUDP.stop();
-
-  if (rlen < 57) return "";
-
-  // 解析响应中的主机名
-  // 响应格式: Header(12) + Name encoding + Type(2) + Class(2) + TTL(4) + RDLEN(2) + NUM_NAMES(1) + NAMES...
-  int numNames = response[56];
-  if (numNames > 0 && rlen >= 57 + 15) {
-    char name[16] = {0};
-    memcpy(name, &response[57], 15);
-    // 去除空格
-    for (int i = 14; i >= 0; i--) {
-      if (name[i] == ' ') name[i] = '\0';
-      else break;
-    }
-    return String(name);
-  }
-
-  return "";
-}
-
 // ==================== 扫描实时推送 ====================
 void broadcastScanProgress(int progress, const char* status) {
   scanProgress = progress;
@@ -610,25 +554,43 @@ void scanYield() {
 }
 
 // 推送扫描状态到 Go 服务器（通过 WebSocket）
+// 分批发送，避免超出 WebSocket 缓冲区限制
 void pushScanStatus() {
   if (!WS_ENABLED || !wsClient || !wsClient->available()) return;
 
-  JsonDocument doc;
-  doc["cmd"] = "scan_status";
-  doc["data"]["scanning"] = isScanning;
-  doc["data"]["progress"] = scanProgress;
+  // 先发送状态（不含设备列表）
+  JsonDocument statusDoc;
+  statusDoc["cmd"] = "scan_status";
+  statusDoc["data"]["scanning"] = isScanning;
+  statusDoc["data"]["progress"] = scanProgress;
+  statusDoc["data"]["total"] = scannedDeviceCount;
 
-  JsonArray devices = doc["data"]["devices"].to<JsonArray>();
-  for (int i = 0; i < scannedDeviceCount; i++) {
-    JsonObject d = devices.add<JsonObject>();
-    d["ip"] = scannedDevices[i].ip.toString();
-    d["mac"] = macToString(scannedDevices[i].mac);
-    d["name"] = scannedDevices[i].hostname;
+  String statusOut;
+  serializeJson(statusDoc, statusOut);
+  wsClient->send(statusOut);
+
+  // 分批发送设备列表（每批 10 个设备）
+  const int BATCH_SIZE = 10;
+  for (int batch = 0; batch < scannedDeviceCount; batch += BATCH_SIZE) {
+    JsonDocument doc;
+    doc["cmd"] = "scan_devices_batch";
+    doc["data"]["batch_start"] = batch;
+    doc["data"]["total"] = scannedDeviceCount;
+
+    JsonArray devices = doc["data"]["devices"].to<JsonArray>();
+    int end = min(batch + BATCH_SIZE, scannedDeviceCount);
+    for (int i = batch; i < end; i++) {
+      JsonObject d = devices.add<JsonObject>();
+      d["ip"] = scannedDevices[i].ip.toString();
+      d["mac"] = macToString(scannedDevices[i].mac);
+      d["name"] = scannedDevices[i].hostname;
+    }
+
+    String batchOut;
+    serializeJson(doc, batchOut);
+    wsClient->send(batchOut);
+    delay(10);  // 短暂延迟，避免缓冲区溢出
   }
-
-  String out;
-  serializeJson(doc, out);
-  wsClient->send(out);
 }
 
 // ==================== 多轮 ARP 扫描（整合去重）====================
@@ -719,35 +681,35 @@ void startNetworkScan() {
   }
 
   // ========================================
-  // 整合结果：出现 >= 2 次的设备 (60-70%)
+  // 整合结果：所有发现过的设备 (60-70%)
   // ========================================
-  Serial.println("\n[整合] 筛选稳定设备...");
+  Serial.println("\n[整合] 汇总所有发现的设备...");
   scanProgress = 60;
   broadcastScanProgress(60, "整合结果...");
   pushScanStatus();
 
-  int stableCount = 0;
+  int totalCount = 0;
   for (int i = 1; i < 255 && scannedDeviceCount < MAX_SCAN_RESULTS; i++) {
     // 跳过本机 IP
     if (i == localIP[3]) continue;
 
-    // 出现 2 次以上才算稳定
-    if (tempScanData[i].count >= 2 && tempScanData[i].hasMac) {
+    // 保留所有发现过的设备（出现 >= 1 次）
+    if (tempScanData[i].count >= 1 && tempScanData[i].hasMac) {
       scannedDevices[scannedDeviceCount].ip = IPAddress(localIP[0], localIP[1], localIP[2], i);
       memcpy(scannedDevices[scannedDeviceCount].mac, tempScanData[i].mac, 6);
       scannedDevices[scannedDeviceCount].hostname = "";
       scannedDeviceCount++;
-      stableCount++;
+      totalCount++;
 
       Serial.printf("  [%d] %d.%d.%d.%d -> %s (出现 %d 次)\n",
-        stableCount,
+        totalCount,
         localIP[0], localIP[1], localIP[2], i,
         macToString(tempScanData[i].mac).c_str(),
         tempScanData[i].count);
     }
   }
 
-  Serial.printf("稳定设备: %d 个\n", stableCount);
+  Serial.printf("发现设备: %d 个\n", totalCount);
 
   // ========================================
   // 设备名称识别 (70-100%)
@@ -773,24 +735,7 @@ void startNetworkScan() {
       if (i % 10 == 0) scanYield();
     }
 
-    // NetBIOS（仅未命名的）
-    scanProgress = 85;
-    broadcastScanProgress(85, "NetBIOS...");
-
-    int netbiosMatched = 0;
-    for (int i = 0; i < scannedDeviceCount; i++) {
-      if (scannedDevices[i].hostname.length() == 0) {
-        String hostname = queryNetBIOSName(scannedDevices[i].ip);
-        if (hostname.length() > 0) {
-          scannedDevices[i].hostname = hostname;
-          netbiosMatched++;
-        }
-        delay(30);
-      }
-      if (i % 5 == 0) scanYield();
-    }
-
-    Serial.printf("mDNS: %d, NetBIOS: %d\n", mdnsMatched, netbiosMatched);
+    Serial.printf("mDNS: 识别 %d 个设备名称\n", mdnsMatched);
   }
 
   // ========================================

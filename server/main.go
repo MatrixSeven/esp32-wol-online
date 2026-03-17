@@ -43,7 +43,9 @@ var (
 	scanCache   = Message{"scanning": false, "progress": 0, "devices": []interface{}{}}
 
 	upgrader = websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool { return true },
+		CheckOrigin:      func(r *http.Request) bool { return true },
+		ReadBufferSize:   65536, // 64KB 读取缓冲区
+		WriteBufferSize:  65536, // 64KB 写入缓冲区
 	}
 )
 
@@ -347,10 +349,44 @@ func updateScanCache(msg Message) {
 		return
 	}
 
-	scanCache = Message{
-		"scanning": data["scanning"],
-		"progress": data["progress"],
-		"devices":  data["devices"],
+	// 处理分批设备列表
+	if cmd, _ := msg["cmd"].(string); cmd == "scan_devices_batch" {
+		// 获取当前设备列表
+		currentDevices, _ := scanCache["devices"].([]interface{})
+
+		// 添加新批次设备
+		if newDevices, ok := data["devices"].([]interface{}); ok {
+			scanCache["devices"] = append(currentDevices, newDevices...)
+		}
+
+		// 更新总数
+		if total, ok := data["total"].(float64); ok {
+			scanCache["total"] = int(total)
+		}
+		return
+	}
+
+	// 处理扫描状态更新
+	if scanning, ok := data["scanning"]; ok {
+		scanCache["scanning"] = scanning
+	}
+	if progress, ok := data["progress"]; ok {
+		scanCache["progress"] = progress
+	}
+	if total, ok := data["total"].(float64); ok {
+		scanCache["total"] = int(total)
+	}
+
+	// 如果是新扫描开始，清空设备列表
+	if scanning, ok := data["scanning"].(bool); ok && scanning {
+		if progress, ok := data["progress"].(float64); ok && progress < 5 {
+			scanCache["devices"] = []interface{}{}
+		}
+	}
+
+	// 处理完整设备列表（兼容旧格式）
+	if devices, ok := data["devices"].([]interface{}); ok && len(devices) > 0 {
+		scanCache["devices"] = devices
 	}
 }
 
@@ -473,7 +509,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			devicesMu.Unlock()
 
 			// 处理扫描状态更新（缓存 + 广播）
-			if cmd == "scan_status" || cmd == "scan_result" {
+			if cmd == "scan_status" || cmd == "scan_result" || cmd == "scan_devices_batch" {
 				updateScanCache(msg)
 			}
 
