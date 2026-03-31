@@ -1,66 +1,75 @@
-# ESP32 WOL 远程唤醒器
+# ESP32 WOL Remote Wake-on-LAN
 
-基于 ESP32-S3 的 Wake-on-LAN 远程唤醒系统，支持通过公网服务器远程控制局域网设备唤醒。
+[中文文档](README_CN.md)
 
-## 功能特性
+A Wake-on-LAN remote wake-up system based on ESP32-S3, supporting remote control of LAN devices through a public server.
 
-- **远程唤醒** - 通过 WebSocket 连接公网服务器，实现外网唤醒局域网设备
-- **设备管理** - 添加、删除、唤醒已保存的设备
-- **局域网扫描** - 多轮 ARP 扫描，自动发现局域网设备，mDNS 识别主机名
-- **广播唤醒** - 一键向整个局域网发送广播唤醒包
-- **状态监控** - 实时显示运行时间、唤醒次数、温度、WiFi 信号、内存使用等
-- **BLE 防休眠** - 定时通过蓝牙发送按键，防止 PC 自动休眠
-- **双界面** - ESP32 本地 Web 界面 + Go 服务器远程界面
-- **深色/浅色主题** - 支持主题切换，自动保存偏好
-- **OAuth 登录** - 支持微信 OAuth 登录
-- **灵活配置** - 支持命令行参数、环境变量、.env 文件三种配置方式
+![ESP32-S3](docs/esp-32.jpg)
 
-## 系统架构
+## Features
+
+- **Remote Wake** - Wake LAN devices from outside via WebSocket connection to a public server
+- **Device Management** - Add, delete, and wake saved devices
+- **LAN Scanning** - Multi-round ARP scanning with mDNS hostname resolution
+- **Broadcast Wake** - One-click broadcast WOL packet to the entire LAN
+- **Status Monitoring** - Real-time uptime, wake count, temperature, WiFi signal, memory usage
+- **BLE Anti-Sleep** - Periodic Bluetooth key presses to prevent PC from sleeping
+- **Dual Interface** - ESP32 local Web UI + Go server remote UI
+- **Dark/Light Theme** - Theme switching with preference persistence
+- **OAuth Login** - WeChat OAuth support
+- **Flexible Config** - CLI flags, environment variables, or .env file
+
+## System Architecture
 
 ```
 ┌─────────────┐     WebSocket      ┌─────────────┐
 │   ESP32-S3  │◄──────────────────►│  Go Server  │
-│  (局域网)   │                    │  (公网服务器) │
+│    (LAN)    │                    │  (Public)   │
 └─────────────┘                    └─────────────┘
        │                                  │
        │ WOL Magic Packet                 │ Web UI
        ▼                                  ▼
 ┌─────────────┐                    ┌─────────────┐
-│  局域网设备  │                    │  用户浏览器  │
+│  LAN Device │                    │   Browser   │
 └─────────────┘                    └─────────────┘
 ```
 
-## 硬件要求
+## Screenshots
 
-- ESP32-S3-DevKitC-1 开发板
-- 可选：按钮（连接 BOOT 引脚，用于物理唤醒）
+![Local Web UI](docs/wol-local.png)
 
-## 项目结构
+## Hardware Requirements
+
+- ESP32-S3-DevKitC-1 development board
+- Optional: Button (connected to BOOT pin for physical wake trigger)
+
+## Project Structure
 
 ```
 esp32-wol/
 ├── src/
-│   ├── main.cpp          # 主程序
-│   ├── config.h          # 配置文件
-│   ├── ble_keyboard.h    # BLE 蓝牙键盘
-│   └── web_server.h      # Web 界面 HTML
+│   ├── main.cpp          # Main program
+│   ├── config.h          # Configuration
+│   ├── ble_keyboard.h    # BLE anti-sleep keyboard
+│   └── web_server.h      # Web UI HTML
 ├── server/
-│   ├── main.go           # Go WebSocket 服务器
+│   ├── main.go           # Go WebSocket server
 │   ├── templates/
-│   │   └── index.html    # 远程 Web 界面
-│   ├── deploy.sh         # 部署脚本
-│   ├── .env.example      # 环境变量示例
+│   │   └── index.html    # Remote Web UI
+│   ├── deploy.sh         # Deploy script
+│   ├── .env.example      # Environment variable template
 │   ├── go.mod
 │   └── go.sum
-├── platformio.ini        # PlatformIO 配置
+├── docs/                 # Images and documentation
+├── platformio.ini        # PlatformIO config
 └── README.md
 ```
 
-## 快速开始
+## Quick Start
 
-### 1. 配置 ESP32
+### 1. Configure ESP32
 
-编辑 `src/config.h`，设置 WiFi 和认证信息：
+Edit `src/config.h` with your WiFi and auth credentials:
 
 ```cpp
 const char* WIFI_SSID = "your-wifi-ssid";
@@ -69,98 +78,98 @@ const char* AUTH_USERNAME = "admin";
 const char* AUTH_PASSWORD = "your-password";
 ```
 
-同时设置 WebSocket Token（需与服务器端一致）：
+Set the WebSocket token (must match the server):
 
 ```cpp
 String WS_TOKEN = "your-secret-token";
 ```
 
-### 2. 编译上传 ESP32
+### 2. Build & Flash ESP32
 
 ```bash
-# 编译
+# Build
 pio run
 
-# 上传（连接 ESP32 后）
+# Flash (with ESP32 connected)
 pio run -t upload
 
-# 查看串口输出
+# Serial monitor
 pio device monitor
 ```
 
-### 3. 配置 Go 服务器
+### 3. Configure Go Server
 
-复制环境变量示例文件：
+Copy the example env file:
 
 ```bash
 cd server
 cp .env.example .env
 ```
 
-编辑 `.env` 文件，填入你的配置：
+Edit `.env` with your settings:
 
 ```bash
-# 服务器监听端口
+# Server listen port
 WOL_PORT=8199
 
-# admin 用户密码（必改）
+# Admin password (required)
 WOL_PASSWORD=your_secure_password
 
-# WebSocket 固定访问令牌，ESP32 连接使用（必改）
+# WebSocket token for ESP32 connection (required)
 WOL_TOKEN=your_secret_token
 
-# OAuth 配置（可选）
+# OAuth config (optional)
 WOL_OAUTH_APP_ID=
 WOL_OAUTH_APP_SECRET=
 WOL_OAUTH_USER_ID=
 ```
 
-### 4. 部署 Go 服务器
+### 4. Deploy Go Server
 
 ```bash
 cd server
 
-# 基本用法（只传 IP，使用 .env 中的配置）
+# Basic (IP only, uses .env config)
 ./deploy.sh your-server-ip
 
-# 完整参数
-./deploy.sh <服务器IP> [用户名] [端口] [密码]
+# Full parameters
+./deploy.sh <server-ip> [user] [port] [password]
 
-# 示例
+# Examples
 ./deploy.sh 1.2.3.4
 ./deploy.sh 1.2.3.4 root 8199 your_password
 ```
 
-### 5. 配置 ESP32 连接远程服务器
+### 5. Connect ESP32 to Remote Server
 
-访问 ESP32 的 Web 界面（通过串口查看 IP），在设置中：
-- 启用远程连接
-- 填写 WebSocket 服务器地址：`ws://your-server:8199/ws`
-- 填写 Token（与服务器端一致）
+Open the ESP32 Web UI (check serial output for IP), then in Settings:
+- Enable remote connection
+- Set WebSocket server address: `ws://your-server:8199/ws`
+- Set Token (must match server)
 
-## 服务器配置
+## Server Configuration
 
-Go 服务器支持三种配置方式（优先级从高到低）：
+The Go server supports three configuration methods (highest to lowest priority):
 
-| 优先级 | 方式 | 示例 |
-|--------|------|------|
-| 1 | 命令行参数 | `-port 8199 -password xxx` |
-| 2 | 环境变量 | `WOL_PORT=8199` |
-| 3 | .env 文件 | `WOL_PORT=8199` |
-| 4 | 默认值 | `8080` |
+| Priority | Method | Example |
+|----------|--------|---------|
+| 1 | CLI flags | `-port 8199 -password xxx` |
+| 2 | Environment variables | `WOL_PORT=8199` |
+| 3 | .env file | `WOL_PORT=8199` |
+| 4 | Default | `8080` |
 
-### 环境变量
+### Environment Variables
 
-| 变量名 | 说明 | 必填 |
-|--------|------|------|
-| `WOL_PORT` | 监听端口（默认 `8080`） | 否 |
-| `WOL_PASSWORD` | admin 密码 | **是** |
-| `WOL_TOKEN` | WebSocket 令牌 | **是** |
-| `WOL_OAUTH_APP_ID` | OAuth 应用 ID | 否 |
-| `WOL_OAUTH_APP_SECRET` | OAuth 应用密钥 | 否 |
-| `WOL_OAUTH_USER_ID` | OAuth 允许的用户 ID | 否 |
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `WOL_PORT` | Listen port (default `8080`) | No |
+| `WOL_PASSWORD` | Admin password | **Yes** |
+| `WOL_TOKEN` | WebSocket token | **Yes** |
+| `WOL_OAUTH_APP_ID` | OAuth app ID | No |
+| `WOL_OAUTH_APP_SECRET` | OAuth app secret | No |
+| `WOL_OAUTH_USER_ID` | OAuth allowed user ID | No |
 
-### 命令行参数
+### CLI Flags
 
 ```bash
 ./wol-server -port 8199 \
@@ -171,41 +180,41 @@ Go 服务器支持三种配置方式（优先级从高到低）：
   -user-id "your_user_id"
 ```
 
-## API 接口
+## API Reference
 
 ### ESP32 HTTP API
 
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| `/` | GET | Web 界面 |
-| `/wake?index=N` | GET | 唤醒指定设备 |
-| `/wake?all=1` | GET | 唤醒所有已保存设备 |
-| `/wake/broadcast` | GET | 广播唤醒整个局域网 |
-| `/add?name=&mac=` | GET | 添加设备 |
-| `/delete?index=N` | GET | 删除设备 |
-| `/list` | GET | 获取设备列表 |
-| `/scan` | GET | 启动局域网扫描 |
-| `/scan/results` | GET | 获取扫描结果 |
-| `/status` | GET | 获取系统状态 |
-| `/settings` | GET | 获取远程连接设置 |
-| `/settings/save` | GET | 保存远程连接设置 |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Web UI |
+| `/wake?index=N` | GET | Wake device by index |
+| `/wake?all=1` | GET | Wake all saved devices |
+| `/wake/broadcast` | GET | Broadcast wake to entire LAN |
+| `/add?name=&mac=` | GET | Add device |
+| `/delete?index=N` | GET | Delete device |
+| `/list` | GET | Get device list |
+| `/scan` | GET | Start LAN scan |
+| `/scan/results` | GET | Get scan results |
+| `/status` | GET | Get system status |
+| `/settings` | GET | Get remote connection settings |
+| `/settings/save` | GET | Save remote connection settings |
 
-### WebSocket 命令
+### WebSocket Commands
 
-| 命令 | 说明 |
-|------|------|
-| `get_devices` | 获取设备列表 |
-| `wake` | 唤醒设备 |
-| `wake_broadcast` | 广播唤醒 |
-| `add_device` | 添加设备 |
-| `delete_device` | 删除设备 |
-| `scan` | 启动扫描 |
-| `get_scan_status` | 获取扫描状态 |
-| `get_status` | 获取状态 |
+| Command | Description |
+|---------|-------------|
+| `get_devices` | Get device list |
+| `wake` | Wake device |
+| `wake_broadcast` | Broadcast wake |
+| `add_device` | Add device |
+| `delete_device` | Delete device |
+| `scan` | Start scan |
+| `get_scan_status` | Get scan status |
+| `get_status` | Get status |
 
-## 技术栈
+## Tech Stack
 
-- **ESP32 固件**
+- **ESP32 Firmware**
   - Arduino Framework
   - HijelHID_BLEKeyboard (NimBLE)
   - ArduinoWebsockets
@@ -213,11 +222,11 @@ Go 服务器支持三种配置方式（优先级从高到低）：
   - ESP32Ping
   - ESPmDNS
 
-- **Go 服务器**
+- **Go Server**
   - gorilla/websocket
   - golang-jwt/jwt
   - godotenv
 
-## 许可证
+## License
 
 MIT License
