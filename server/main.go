@@ -103,7 +103,7 @@ func main() {
 		adminPassword = os.Getenv("WOL_PASSWORD")
 	}
 	if adminPassword == "" {
-		adminPassword = "%&@Wol@Secure2f24!"
+		adminPassword = "change-me"
 		log.Println("[警告] 使用默认密码，建议通过 -password 参数或 WOL_PASSWORD 环境变量设置")
 	}
 	users["admin"] = adminPassword
@@ -114,7 +114,7 @@ func main() {
 		staticToken = os.Getenv("WOL_TOKEN")
 	}
 	if staticToken == "" {
-		staticToken = "esp32-wol-fixed-token-x9k2m"
+		staticToken = "change-me"
 		log.Println("[配置] 使用默认固定 Token")
 	}
 

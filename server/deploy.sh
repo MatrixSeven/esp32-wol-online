@@ -1,13 +1,27 @@
 #!/bin/bash
 # WOL Server 部署脚本
+# 用法: ./deploy.sh <服务器IP> [用户名] [端口] [密码]
+# 示例: ./deploy.sh 1.2.3.4
+#        ./deploy.sh 1.2.3.4 root 8199 mypassword
 
-REMOTE_HOST="root@101.34.56.108"
+if [ -z "$1" ]; then
+  echo "用法: ./deploy.sh <服务器IP> [用户名] [端口] [密码]"
+  echo "示例: ./deploy.sh 1.2.3.4"
+  echo "       ./deploy.sh 1.2.3.4 root 8199 mypassword"
+  exit 1
+fi
+
+SERVER_IP="$1"
+REMOTE_USER="${2:-root}"
 REMOTE_DIR="/root/app"
 BINARY_NAME="wol-server"
-PORT=8199
-PASSWORD="txJlstWCbaaabSK@"
+PORT="${3:-8199}"
+PASSWORD="$4"
+
+REMOTE_HOST="${REMOTE_USER}@${SERVER_IP}"
 
 echo "=== WOL Server 部署脚本 ==="
+echo "目标: ${REMOTE_HOST}"
 
 # 1. 编译
 echo "[1/4] 编译 Linux AMD64 版本..."
@@ -26,9 +40,13 @@ echo "上传完成"
 
 # 4. 启动服务
 echo "[4/4] 启动远程服务..."
-ssh ${REMOTE_HOST} "cd ${REMOTE_DIR} && chmod +x ${BINARY_NAME} && tmux new-session -d -s wol-server './${BINARY_NAME} -port ${PORT} -password ${PASSWORD}'"
+if [ -n "$PASSWORD" ]; then
+  ssh ${REMOTE_HOST} "cd ${REMOTE_DIR} && chmod +x ${BINARY_NAME} && tmux new-session -d -s wol-server './${BINARY_NAME} -port ${PORT} -password ${PASSWORD}'"
+else
+  ssh ${REMOTE_HOST} "cd ${REMOTE_DIR} && chmod +x ${BINARY_NAME} && tmux new-session -d -s wol-server './${BINARY_NAME} -port ${PORT}'"
+fi
 
 echo ""
 echo "=== 部署完成 ==="
-echo "服务地址: http://101.34.56.108:${PORT}"
+echo "服务地址: http://${SERVER_IP}:${PORT}"
 echo "查看日志: ssh ${REMOTE_HOST} 'tmux attach -t wol-server'"

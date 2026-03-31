@@ -9,6 +9,7 @@
 - **局域网扫描** - 多轮 ARP 扫描，自动发现局域网设备，mDNS 识别主机名
 - **广播唤醒** - 一键向整个局域网发送广播唤醒包
 - **状态监控** - 实时显示运行时间、唤醒次数、温度、WiFi 信号、内存使用等
+- **BLE 防休眠** - 定时通过蓝牙发送按键，防止 PC 自动休眠
 - **双界面** - ESP32 本地 Web 界面 + Go 服务器远程界面
 - **深色/浅色主题** - 支持主题切换，自动保存偏好
 - **OAuth 登录** - 支持微信 OAuth 登录
@@ -41,6 +42,7 @@ esp32-wol/
 ├── src/
 │   ├── main.cpp          # 主程序
 │   ├── config.h          # 配置文件
+│   ├── ble_keyboard.h    # BLE 蓝牙键盘
 │   └── web_server.h      # Web 界面 HTML
 ├── server/
 │   ├── main.go           # Go WebSocket 服务器
@@ -67,6 +69,12 @@ const char* AUTH_USERNAME = "admin";
 const char* AUTH_PASSWORD = "your-password";
 ```
 
+同时设置 WebSocket Token（需与服务器端一致）：
+
+```cpp
+String WS_TOKEN = "your-secret-token";
+```
+
 ### 2. 编译上传 ESP32
 
 ```bash
@@ -89,38 +97,38 @@ cd server
 cp .env.example .env
 ```
 
-编辑 `.env` 文件：
+编辑 `.env` 文件，填入你的配置：
 
 ```bash
 # 服务器监听端口
 WOL_PORT=8199
 
-# admin 用户密码
+# admin 用户密码（必改）
 WOL_PASSWORD=your_secure_password
 
-# WebSocket 固定访问令牌（ESP32 连接使用）
-WOL_TOKEN=your_fixed_token
+# WebSocket 固定访问令牌，ESP32 连接使用（必改）
+WOL_TOKEN=your_secret_token
 
-# OAuth 配置
-WOL_OAUTH_APP_ID=100003
-WOL_OAUTH_APP_SECRET=your_app_secret
-WOL_OAUTH_USER_ID=your_user_id
+# OAuth 配置（可选）
+WOL_OAUTH_APP_ID=
+WOL_OAUTH_APP_SECRET=
+WOL_OAUTH_USER_ID=
 ```
 
 ### 4. 部署 Go 服务器
 
-编辑 `server/deploy.sh`，修改远程服务器地址：
-
-```bash
-REMOTE_HOST="root@your-server-ip"
-REMOTE_DIR="/root/app"
-```
-
-运行部署：
-
 ```bash
 cd server
-./deploy.sh
+
+# 基本用法（只传 IP，使用 .env 中的配置）
+./deploy.sh your-server-ip
+
+# 完整参数
+./deploy.sh <服务器IP> [用户名] [端口] [密码]
+
+# 示例
+./deploy.sh 1.2.3.4
+./deploy.sh 1.2.3.4 root 8199 your_password
 ```
 
 ### 5. 配置 ESP32 连接远程服务器
@@ -128,7 +136,7 @@ cd server
 访问 ESP32 的 Web 界面（通过串口查看 IP），在设置中：
 - 启用远程连接
 - 填写 WebSocket 服务器地址：`ws://your-server:8199/ws`
-- 填写 Token
+- 填写 Token（与服务器端一致）
 
 ## 服务器配置
 
@@ -143,14 +151,14 @@ Go 服务器支持三种配置方式（优先级从高到低）：
 
 ### 环境变量
 
-| 变量名 | 说明 | 默认值 |
-|--------|------|--------|
-| `WOL_PORT` | 监听端口 | `8080` |
-| `WOL_PASSWORD` | admin 密码 | `%&@Wol@Secure2f24!` |
-| `WOL_TOKEN` | WebSocket 固定令牌 | `esp32-wol-fixed-token-x9k2m` |
-| `WOL_OAUTH_APP_ID` | OAuth 应用 ID | `100003` |
-| `WOL_OAUTH_APP_SECRET` | OAuth 应用密钥 | - |
-| `WOL_OAUTH_USER_ID` | OAuth 允许的用户 ID | - |
+| 变量名 | 说明 | 必填 |
+|--------|------|------|
+| `WOL_PORT` | 监听端口（默认 `8080`） | 否 |
+| `WOL_PASSWORD` | admin 密码 | **是** |
+| `WOL_TOKEN` | WebSocket 令牌 | **是** |
+| `WOL_OAUTH_APP_ID` | OAuth 应用 ID | 否 |
+| `WOL_OAUTH_APP_SECRET` | OAuth 应用密钥 | 否 |
+| `WOL_OAUTH_USER_ID` | OAuth 允许的用户 ID | 否 |
 
 ### 命令行参数
 
@@ -199,6 +207,7 @@ Go 服务器支持三种配置方式（优先级从高到低）：
 
 - **ESP32 固件**
   - Arduino Framework
+  - HijelHID_BLEKeyboard (NimBLE)
   - ArduinoWebsockets
   - ArduinoJson 7.x
   - ESP32Ping
@@ -208,13 +217,6 @@ Go 服务器支持三种配置方式（优先级从高到低）：
   - gorilla/websocket
   - golang-jwt/jwt
   - godotenv
-
-## 默认凭据
-
-- **Go 服务器默认密码**: `%&@Wol@Secure2f24!`
-- **固定 Token**: `esp32-wol-fixed-token-x9k2m`
-
-⚠️ **生产环境请务必修改默认密码！**
 
 ## 许可证
 

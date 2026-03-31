@@ -4,12 +4,12 @@
 #include <Arduino.h>
 
 // ==================== WiFi 配置 ====================
-const char* WIFI_SSID = "sucang";
-const char* WIFI_PASSWORD = "Sc12345678";
+const char* WIFI_SSID = "your-wifi-ssid";
+const char* WIFI_PASSWORD = "your-wifi-password";
 
 // ==================== 安全认证配置 ====================
 const char* AUTH_USERNAME = "admin";
-const char* AUTH_PASSWORD = "wol2024";
+const char* AUTH_PASSWORD = "your-password";
 
 // ==================== 远程连接配置 (通过 frp 反向代理) ====================
 String REMOTE_URL = "";  // 外网访问地址，如 http://your-server.com/wol
@@ -19,7 +19,7 @@ bool WS_ENABLED = false;
 String WS_SERVER = "";     // WebSocket服务器地址，如 ws://server:8080/ws
 String WS_USER = "";
 String WS_PASS = "";
-String WS_TOKEN = "esp32-wol-fixed-token-x9k2m";  // WebSocket 认证令牌，需与服务端一致
+String WS_TOKEN = "change-me";  // WebSocket 认证令牌，需与服务端一致
 
 // ==================== 设备配置结构 ====================
 struct Device {
