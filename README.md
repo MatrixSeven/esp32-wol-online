@@ -13,7 +13,6 @@ A Wake-on-LAN remote wake-up system based on ESP32-S3, supporting remote control
 - **LAN Scanning** - Multi-round ARP scanning with mDNS hostname resolution
 - **Broadcast Wake** - One-click broadcast WOL packet to the entire LAN
 - **Status Monitoring** - Real-time uptime, wake count, temperature, WiFi signal, memory usage
-- **BLE Anti-Sleep** - Periodic Bluetooth key presses to prevent PC from sleeping
 - **Dual Interface** - ESP32 local Web UI + Go server remote UI
 - **Dark/Light Theme** - Theme switching with preference persistence
 - **OAuth Login** - WeChat OAuth support
@@ -50,7 +49,7 @@ esp32-wol/
 ├── src/
 │   ├── main.cpp          # Main program
 │   ├── config.h          # Configuration
-│   ├── ble_keyboard.h    # BLE anti-sleep keyboard
+│   ├── ble_keyboard.h    # BLE keyboard (optional)
 │   └── web_server.h      # Web UI HTML
 ├── server/
 │   ├── main.go           # Go WebSocket server
@@ -216,7 +215,6 @@ The Go server supports three configuration methods (highest to lowest priority):
 
 - **ESP32 Firmware**
   - Arduino Framework
-  - HijelHID_BLEKeyboard (NimBLE)
   - ArduinoWebsockets
   - ArduinoJson 7.x
   - ESP32Ping

@@ -13,7 +13,6 @@
 - **局域网扫描** - 多轮 ARP 扫描，自动发现局域网设备，mDNS 识别主机名
 - **广播唤醒** - 一键向整个局域网发送广播唤醒包
 - **状态监控** - 实时显示运行时间、唤醒次数、温度、WiFi 信号、内存使用等
-- **BLE 防休眠** - 定时通过蓝牙发送按键，防止 PC 自动休眠
 - **双界面** - ESP32 本地 Web 界面 + Go 服务器远程界面
 - **深色/浅色主题** - 支持主题切换，自动保存偏好
 - **OAuth 登录** - 支持微信 OAuth 登录
@@ -216,7 +215,6 @@ Go 服务器支持三种配置方式（优先级从高到低）：
 
 - **ESP32 固件**
   - Arduino Framework
-  - HijelHID_BLEKeyboard (NimBLE)
   - ArduinoWebsockets
   - ArduinoJson 7.x
   - ESP32Ping
